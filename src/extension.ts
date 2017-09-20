@@ -87,7 +87,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
                 }
             }
             // console.log(entries, name, resource);
-            throw new Error(`ENO: ${resource.path}`);
+            return Promise.reject<vscode.FileStat>(`ENOENT, ${resource.path}`);
         });
     }
 

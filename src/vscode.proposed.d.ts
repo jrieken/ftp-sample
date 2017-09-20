@@ -23,6 +23,31 @@ declare module 'vscode' {
     export namespace window {
         export function showOpenDialog(options: OpenDialogOptions): Thenable<Uri[]>;
         export function showSaveDialog(options: SaveDialogOptions): Thenable<Uri>;
+
+        /**
+         * Shows a selection list of [workspace folders](#workspace.workspaceFolders) to pick from.
+         * Returns `undefined` if no folder is open.
+         *
+         * @param options Configures the behavior of the workspace folder list.
+         * @return A promise that resolves to the workspace folder or `undefined`.
+         */
+        export function showWorkspaceFolderPick(options?: WorkspaceFolderPickOptions): Thenable<WorkspaceFolder | undefined>;
+    }
+
+    /**
+     * Options to configure the behaviour of the [workspace folder](#WorkspaceFolder) pick UI.
+     */
+    export interface WorkspaceFolderPickOptions {
+
+        /**
+         * An optional string to show as place holder in the input box to guide the user what to pick on.
+         */
+        placeHolder?: string;
+
+        /**
+         * Set to `true` to keep the picker open when focus moves to another part of the editor or to another window.
+         */
+        ignoreFocusOut?: boolean;
     }
 
     export enum FileChangeType {
@@ -136,18 +161,9 @@ declare module 'vscode' {
     }
 
     /**
-     * Represents a color format
-     */
-    export enum ColorFormat {
-        RGB = 0,
-        HEX = 1,
-        HSL = 2
-    }
-
-    /**
      * Represents a color range from a document.
      */
-    export class ColorRange {
+    export class ColorInformation {
 
         /**
          * The range in the document where this color appers.
@@ -169,6 +185,26 @@ declare module 'vscode' {
         constructor(range: Range, color: Color);
     }
 
+    export class ColorPresentation {
+        /**
+         * The label of this color presentation. It will be shown on the color
+         * picker header. By default this is also the text that is inserted when selecting
+         * this color presentation.
+         */
+        label: string;
+        /**
+         * An [edit](#TextEdit) which is applied to a document when selecting
+         * this presentation for the color.  When `falsy` the [label](#ColorPresentation.label)
+         * is used.
+         */
+        textEdit?: TextEdit;
+        /**
+         * An optional array of additional [text edits](#TextEdit) that are applied when
+         * selecting this color presentation. Edits must not overlap with the main [edit](#ColorPresentation.textEdit) nor with themselves.
+         */
+        additionalTextEdits?: TextEdit[];
+    }
+
     /**
      * The document color provider defines the contract between extensions and feature of
      * picking and modifying colors in the editor.
@@ -179,14 +215,14 @@ declare module 'vscode' {
          *
          * @param document The document in which the command was invoked.
          * @param token A cancellation token.
-         * @return An array of [color ranges](#ColorRange) or a thenable that resolves to such. The lack of a result
+         * @return An array of [color informations](#ColorInformation) or a thenable that resolves to such. The lack of a result
          * can be signaled by returning `undefined`, `null`, or an empty array.
          */
-        provideDocumentColors(document: TextDocument, token: CancellationToken): ProviderResult<ColorRange[]>;
+        provideDocumentColors(document: TextDocument, token: CancellationToken): ProviderResult<ColorInformation[]>;
         /**
-         * Provide the string representation for a color.
+         * Provide representations for a color.
          */
-        resolveDocumentColor(color: Color, colorFormat: ColorFormat): ProviderResult<string>;
+        provideColorPresentations(colorInfo: ColorInformation, token: CancellationToken): ProviderResult<ColorPresentation[]>;
     }
 
     export namespace languages {
