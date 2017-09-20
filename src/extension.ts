@@ -20,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
 class FtpFileSystemProvider implements vscode.FileSystemProvider {
 
     private _connection: Promise<JSFtp>;
+    private _gate: Promise<any>;
 
     constructor(
         public readonly root: vscode.Uri
@@ -27,7 +28,8 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
         this._connection = new Promise<JSFtp>((resolve, reject) => {
             const connection = new JSFtp({ host: root.authority });
             connection.keepAlive(1000 * 5);
-            connection.auth('USER', 'PASS', (err) => {
+            connection.auth('performanto-slack-updater\\riejo-test', 'Z0llikon', (err) => {
+                // connection.auth('USER', 'PASS', (err) => {
                 if (err) {
                     reject(err);
                 } else {
@@ -38,22 +40,27 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     private _withConnection<T>(func: keyof JSFtp, ...args: any[]): Promise<T> {
-        return this._connection.then(connection => {
-            return new Promise<T>((resolve, reject) => {
-                (<Function>connection[func]).apply(connection, args.concat([function (err, result) {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                }]));
+        if (this._gate) {
+            return this._gate.then<T>(() => this._withConnection(func, ...args));
+        } else {
+            this._gate = this._connection.then(connection => {
+                return new Promise<T>((resolve, reject) => {
+                    (<Function>connection[func]).apply(connection, args.concat([(err, result) => {
+                        this._gate = null;
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(result);
+                        }
+                    }]));
+                });
             });
-        });
+            return this._gate;
+        }
     }
 
     dispose(): void {
         this._withConnection('raw', 'QUIT');
-
     }
 
     utimes(resource: vscode.Uri, mtime: number): Promise<vscode.FileStat> {
