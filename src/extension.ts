@@ -28,8 +28,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
         this._connection = new Promise<JSFtp>((resolve, reject) => {
             const connection = new JSFtp({ host: root.authority });
             connection.keepAlive(1000 * 5);
-            connection.auth('performanto-slack-updater\\riejo-test', 'Z0llikon', (err) => {
-                // connection.auth('USER', 'PASS', (err) => {
+            connection.auth('USER', 'PASS', (err) => {
                 if (err) {
                     reject(err);
                 } else {
