@@ -6,6 +6,7 @@
         {
             "type": "npm",
             "script": "compile",
+            "isBackground": true,
             "problemMatcher": [
                 "$tsc-watch"
             ]

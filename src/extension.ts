@@ -19,43 +19,61 @@ export function activate(context: vscode.ExtensionContext) {
 
 class FtpFileSystemProvider implements vscode.FileSystemProvider {
 
-    private _connection: Promise<JSFtp>;
-    private _gate: Promise<any>;
+    private _connection: JSFtp;
+    private _pending: { resolve: Function, reject: Function, func: keyof JSFtp, args: any[] }[] = [];
 
     constructor(
         public readonly root: vscode.Uri
     ) {
-        this._connection = new Promise<JSFtp>((resolve, reject) => {
-            const connection = new JSFtp({ host: root.authority });
-            connection.keepAlive(1000 * 5);
-            connection.auth('USER', 'PASS', (err) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(connection);
-                }
-            });
-        });
+
     }
 
     private _withConnection<T>(func: keyof JSFtp, ...args: any[]): Promise<T> {
-        if (this._gate) {
-            return this._gate.then<T>(() => this._withConnection(func, ...args));
-        } else {
-            this._gate = this._connection.then(connection => {
-                return new Promise<T>((resolve, reject) => {
-                    (<Function>connection[func]).apply(connection, args.concat([(err, result) => {
-                        this._gate = null;
-                        if (err) {
-                            reject(err);
-                        } else {
-                            resolve(result);
-                        }
-                    }]));
-                });
-            });
-            return this._gate;
+        return new Promise<T>((resolve, reject) => {
+            this._pending.push({ resolve, reject, func, args });
+            this._nextRequest();
+        });
+    }
+
+    private _nextRequest(): void {
+        if (this._pending.length === 0) {
+            return;
         }
+
+        if (this._connection === void 0) {
+            // ensure connection first
+            const candidate = new JSFtp({
+                host: this.root.authority
+            });
+            candidate.keepAlive(1000 * 5);
+
+            candidate.auth('USER', 'PASS', (err) => {
+                this._connection = err ? null : candidate;
+                this._nextRequest();
+            });
+
+            return;
+
+        }
+
+        if (this._connection === null) {
+            // permanently failed
+            const request = this._pending.shift();
+            request.reject(new Error('no connection'))
+
+        } else {
+            // connected
+            const { func, args, resolve, reject } = this._pending.shift();
+            (<Function>this._connection[func]).apply(this._connection, args.concat([function (err, res) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(res);
+                }
+            }]));
+        }
+
+        this._nextRequest();
     }
 
     dispose(): void {
@@ -73,7 +91,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
             // root directory
             return Promise.resolve(<vscode.FileStat>{
                 type: vscode.FileType.Dir,
-                resource,
+                id: null,
                 mtime: 0,
                 size: 0
             });
@@ -85,42 +103,68 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
             for (const entry of entries) {
                 if (entry.name === name) {
                     return {
-                        resource,
+                        id: null,
                         mtime: entry.time,
                         size: entry.size,
                         type: entry.type
                     };
                 }
             }
-            // console.log(entries, name, resource);
-            return Promise.reject<vscode.FileStat>(`ENOENT, ${resource.path}`);
+            return Promise.reject<vscode.FileStat>(new Error(`ENOENT, ${resource.toString(true)}`));
+        }, err => {
+            return Promise.reject<vscode.FileStat>(new Error(`ENOENT, ${resource.toString(true)}`));
         });
     }
 
-    readdir(resource: vscode.Uri): Promise<vscode.FileStat[]> {
-        return this._withConnection<JSFtp.Entry[]>('ls', resource.path).then(ret => {
-            const result: vscode.FileStat[] = [];
-            for (let entry of ret) {
-                result.push({
-                    resource: resource.with({ path: join(resource.path, entry.name) }),
+    readdir(dir: vscode.Uri): Promise<[vscode.Uri, vscode.FileStat][]> {
+        return this._withConnection<JSFtp.Entry[]>('ls', dir.path).then(entries => {
+            const result: [vscode.Uri, vscode.FileStat][] = [];
+            for (let entry of entries) {
+                const resource = dir.with({ path: join(dir.path, entry.name) });
+                const stat: vscode.FileStat = {
+                    id: resource.toString(),
                     mtime: entry.time,
                     size: entry.size,
                     type: entry.type
-                });
+                }
+                result.push([resource, stat]);
             }
             return result;
         });
     }
 
-    read(resource: vscode.Uri, progress: vscode.Progress<Uint8Array>): Promise<void> {
+    read(resource: vscode.Uri, offset: number, count: number, progress: vscode.Progress<Uint8Array>): Promise<number> {
         return this._withConnection<Readable>('get', resource.path).then(stream => {
-            return new Promise<void>((resolve, reject) => {
-                stream.on('data', d => progress.report(<any>d));
+
+            let read = 0;
+            let ignoreBefore = true;
+            let ignoreAfter = false;
+
+            return new Promise<number>((resolve, reject) => {
+                stream.on('data', (buffer: Buffer) => {
+                    read += buffer.length;
+                    // soo sad, I have no clue how to read 
+                    // a portion of a file via ftp...
+                    if (ignoreBefore) {
+                        if (read > offset) {
+                            let diff = read - offset;
+                            let slice = buffer.slice(buffer.length - diff);
+                            progress.report(slice);
+                            ignoreBefore = false;
+                            read = diff;
+                        }
+                    } else if (!ignoreAfter) {
+                        progress.report(buffer);
+                        if (read > count) {
+                            ignoreAfter = true;
+                        }
+                    }
+                });
                 stream.on('close', hadErr => {
                     if (hadErr) {
                         reject(hadErr);
                     } else {
-                        resolve(undefined);
+                        resolve(read);
                     }
                 });
                 stream.resume();
@@ -136,17 +180,20 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
         return this._withConnection('raw', 'RMD', [resource.path]);
     }
 
-    mkdir(resource: vscode.Uri): Promise<void> {
-        return this._withConnection('raw', 'MKD', [resource.path]);
+    mkdir(resource: vscode.Uri): Promise<vscode.FileStat> {
+        return this._withConnection('raw', 'MKD', [resource.path])
+            .then(() => this.stat(resource));
     }
 
     unlink(resource: vscode.Uri): Promise<void> {
         return this._withConnection('raw', 'DELE', [resource.path]);
     }
 
-    rename(resource: vscode.Uri, target: vscode.Uri): Promise<void> {
+    move(resource: vscode.Uri, target: vscode.Uri): Promise<vscode.FileStat> {
         return this._withConnection<void>('raw', 'RNFR', [resource.path]).then(() => {
             return this._withConnection<void>('raw', 'RNTO', [target.path]);
+        }).then(() => {
+            return this.stat(target);
         });
     }
 }
