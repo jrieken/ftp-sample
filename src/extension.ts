@@ -2,8 +2,8 @@
 
 import * as vscode from 'vscode';
 import { basename, dirname, join } from 'path';
-import { Readable } from 'stream';
 import * as JSFtp from 'jsftp';
+import { Socket } from 'net';
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -133,41 +133,32 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
         });
     }
 
-    read(resource: vscode.Uri, offset: number, count: number, progress: vscode.Progress<Uint8Array>): Promise<number> {
-        return this._withConnection<Readable>('get', resource.path).then(stream => {
+    read(resource: vscode.Uri, offset: number, len: number, progress: vscode.Progress<Uint8Array>): Promise<number> {
 
-            let read = 0;
-            let ignoreBefore = true;
-            let ignoreAfter = false;
+        return this._withConnection<void>('raw', 'REST', [offset]).then(() => {
+
+            return this._withConnection<Socket>('get', resource.path)
+
+        }).then(socket => {
+
+            let bytesRead = 0;
 
             return new Promise<number>((resolve, reject) => {
-                stream.on('data', (buffer: Buffer) => {
-                    read += buffer.length;
-                    // soo sad, I have no clue how to read 
-                    // a portion of a file via ftp...
-                    if (ignoreBefore) {
-                        if (read > offset) {
-                            let diff = read - offset;
-                            let slice = buffer.slice(buffer.length - diff);
-                            progress.report(slice);
-                            ignoreBefore = false;
-                            read = diff;
-                        }
-                    } else if (!ignoreAfter) {
+                socket.on('data', buffer => {
                         progress.report(buffer);
-                        if (read > count) {
-                            ignoreAfter = true;
-                        }
+                    bytesRead += buffer.length;
+                    if (bytesRead > len) {
+                        socket.destroy();
                     }
                 });
-                stream.on('close', hadErr => {
+                socket.on('close', hadErr => {
                     if (hadErr) {
                         reject(hadErr);
                     } else {
-                        resolve(read);
+                        resolve(bytesRead);
                     }
                 });
-                stream.resume();
+                socket.resume();
             });
         });
     }
