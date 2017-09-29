@@ -4,11 +4,12 @@ This is a sample that uses FTP to implement a file system provider in VS Code. W
 
 # Try It
 
-You a couple of things before you can start
+You need a couple of things before you can start
 
 * have a ftp server to talk to
 * update [`extension.ts`](https://github.com/jrieken/ftp-sample/blob/master/src/extension.ts#L14) with your server details (address and auth)
-* re-compile via `npm run compile`
+* run `npm install`
+* compile with `npm run compile`
 
 Now you can run this extension but make sure to open a Workspace.
 
