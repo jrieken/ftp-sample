@@ -11,7 +11,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     let disposable = vscode.workspace.registerFileSystemProvider(
         'ftp',
-        new FtpFileSystemProvider(vscode.Uri.parse('ftp://waws-prod-db3-029.ftp.azurewebsites.windows.net/'))
+        new FtpFileSystemProvider(
+            vscode.Uri.parse('YOUR_SERVER'),
+            '<USER>',
+            '<PASS>'
+        )
     );
 
     context.subscriptions.push(disposable);
@@ -19,13 +23,21 @@ export function activate(context: vscode.ExtensionContext) {
 
 class FtpFileSystemProvider implements vscode.FileSystemProvider {
 
+    readonly root: vscode.Uri;
+
+    private readonly _user: string;
+    private readonly _pass: string;
     private _connection: JSFtp;
     private _pending: { resolve: Function, reject: Function, func: keyof JSFtp, args: any[] }[] = [];
 
     constructor(
-        public readonly root: vscode.Uri
+        root: vscode.Uri,
+        user: string,
+        pass: string
     ) {
-
+        this.root = root;
+        this._user = user;
+        this._pass = pass;
     }
 
     private _withConnection<T>(func: keyof JSFtp, ...args: any[]): Promise<T> {
@@ -46,14 +58,12 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
                 host: this.root.authority
             });
             candidate.keepAlive(1000 * 5);
-
-            candidate.auth('USER', 'PASS', (err) => {
+            candidate.auth(this._user, this._pass, (err) => {
                 this._connection = err ? null : candidate;
                 this._nextRequest();
             });
 
             return;
-
         }
 
         if (this._connection === null) {
@@ -145,7 +155,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
 
             return new Promise<number>((resolve, reject) => {
                 socket.on('data', buffer => {
-                        progress.report(buffer);
+                    progress.report(buffer);
                     bytesRead += buffer.length;
                     if (bytesRead > len) {
                         socket.destroy();
