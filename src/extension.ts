@@ -143,7 +143,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
         });
     }
 
-    read(resource: vscode.Uri, offset: number, len: number, progress: vscode.Progress<Uint8Array>): Promise<number> {
+    read(resource: vscode.Uri, offset: number = 0, len: number, progress: vscode.Progress<Uint8Array>): Promise<number> {
 
         return this._withConnection<void>('raw', 'REST', [offset]).then(() => {
 
@@ -157,7 +157,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
                 socket.on('data', buffer => {
                     progress.report(buffer);
                     bytesRead += buffer.length;
-                    if (bytesRead > len) {
+                    if (len > 0 && bytesRead > len) {
                         socket.destroy();
                     }
                 });

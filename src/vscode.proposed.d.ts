@@ -7,92 +7,7 @@
 
 declare module 'vscode' {
 
-    /**
-     * Options to configure the behaviour of a file open dialog.
-     */
-    export interface OpenDialogOptions {
-        /**
-         * The resource the dialog shows when opened.
-         */
-        defaultUri?: Uri;
-
-        /**
-         * A human-readable string for the open button.
-         */
-        openLabel?: string;
-
-        /**
-         * Only allow to select files. *Note* that not all operating systems support
-         * to select files and folders in one dialog instance.
-         */
-        openFiles?: boolean;
-
-        /**
-         * Only allow to select folders. *Note* that not all operating systems support
-         * to select files and folders in one dialog instance.
-         */
-        openFolders?: boolean;
-
-        /**
-         * Allow to select many files or folders.
-         */
-        openMany?: boolean;
-
-        /**
-         * A set of file filters that are shown in the dialog, e.g.
-         * ```ts
-         * {
-         * 	['Images']: ['*.png', '*.jpg']
-         * 	['TypeScript']: ['*.ts', '*.tsx']
-         * }
-         * ```
-         */
-        filters: { [name: string]: string[] };
-    }
-
-    /**
-     * Options to configure the behaviour of a file save dialog.
-     */
-    export interface SaveDialogOptions {
-        /**
-         * The resource the dialog shows when opened.
-         */
-        defaultUri?: Uri;
-
-        /**
-         * A human-readable string for the save button.
-         */
-        saveLabel?: string;
-
-        /**
-         * A set of file filters that are shown in the dialog, e.g.
-         * ```ts
-         * {
-         * 	['Images']: ['*.png', '*.jpg']
-         * 	['TypeScript']: ['*.ts', '*.tsx']
-         * }
-         * ```
-         */
-        filters: { [name: string]: string[] };
-    }
-
     export namespace window {
-
-        /**
-         * Shows a file open dialog to the user.
-         *
-         * @param options Options that control the dialog.
-         * @returns A promise that resolves to the selected resources or `undefined`.
-         */
-        export function showOpenDialog(options: OpenDialogOptions): Thenable<Uri[] | undefined>;
-
-        /**
-         * Shows a file save dialog to the user.
-         *
-         * @param options Options that control the dialog.
-         * @returns A promise that resolves to the selected resource or `undefined`.
-         */
-        export function showSaveDialog(options: SaveDialogOptions): Thenable<Uri | undefined>;
 
         /**
          * Shows a selection list of [workspace folders](#workspace.workspaceFolders) to pick from.
@@ -192,6 +107,7 @@ declare module 'vscode' {
     export interface FileStat {
         id: number | string;
         mtime: number;
+        // atime: number;
         size: number;
         type: FileType;
     }
@@ -205,11 +121,11 @@ declare module 'vscode' {
 
         // more...
         //
-        utimes(resource: Uri, mtime: number): Thenable<FileStat>;
+        utimes(resource: Uri, mtime: number, atime: number): Thenable<FileStat>;
+
         stat(resource: Uri): Thenable<FileStat>;
 
-        // todo@remote
-        read(resource: Uri, offset: number, length: number, progress: Progress<Uint8Array>): Thenable<number>;
+        read(resource: Uri, offset: number | undefined, length: number | undefined, progress: Progress<Uint8Array>): Thenable<number>;
 
         // todo@remote
         // offset - byte offset to start
@@ -228,6 +144,7 @@ declare module 'vscode' {
         // todo@remote
         // Thenable<FileStat>
         mkdir(resource: Uri): Thenable<FileStat>;
+
         readdir(resource: Uri): Thenable<[Uri, FileStat][]>;
 
         // todo@remote
@@ -238,6 +155,9 @@ declare module 'vscode' {
 
         // todo@remote
         // create(resource: Uri): Thenable<FileStat>;
+
+        // find files by names
+        findFiles?(query: string, progress: Progress<Uri>, token: CancellationToken): Thenable<void>;
     }
 
     export namespace workspace {
