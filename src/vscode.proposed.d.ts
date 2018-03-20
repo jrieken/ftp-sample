@@ -8,33 +8,124 @@
 declare module 'vscode' {
 
     export namespace window {
-
-        /**
-         * Shows a selection list of [workspace folders](#workspace.workspaceFolders) to pick from.
-         * Returns `undefined` if no folder is open.
-         *
-         * @param options Configures the behavior of the workspace folder list.
-         * @return A promise that resolves to the workspace folder or `undefined`.
-         */
-        export function showWorkspaceFolderPick(options?: WorkspaceFolderPickOptions): Thenable<WorkspaceFolder | undefined>;
+        export function sampleFunction(): Thenable<any>;
     }
 
-    /**
-     * Options to configure the behaviour of the [workspace folder](#WorkspaceFolder) pick UI.
-     */
-    export interface WorkspaceFolderPickOptions {
+    //#region Joh: readable diagnostics
 
-        /**
-         * An optional string to show as place holder in the input box to guide the user what to pick on.
-         */
-        placeHolder?: string;
-
-        /**
-         * Set to `true` to keep the picker open when focus moves to another part of the editor or to another window.
-         */
-        ignoreFocusOut?: boolean;
+    export interface DiagnosticChangeEvent {
+        uris: Uri[];
     }
 
+    export namespace languages {
+
+		/**
+		 *
+		 */
+        export const onDidChangeDiagnostics: Event<DiagnosticChangeEvent>;
+
+		/**
+		 *
+		 */
+        export function getDiagnostics(resource: Uri): Diagnostic[];
+
+		/**
+		 *
+		 */
+        export function getDiagnostics(): [Uri, Diagnostic[]][];
+    }
+
+    //#endregion
+
+    //#region Aeschli: folding
+
+    export class FoldingRangeList {
+
+		/**
+		 * The folding ranges.
+		 */
+        ranges: FoldingRange[];
+
+		/**
+		 * Creates mew folding range list.
+		 *
+		 * @param ranges The folding ranges
+		 */
+        constructor(ranges: FoldingRange[]);
+    }
+
+
+    export class FoldingRange {
+
+		/**
+		 * The start line number (0-based)
+		 */
+        startLine: number;
+
+		/**
+		 * The end line number (0-based)
+		 */
+        endLine: number;
+
+		/**
+		 * The actual color value for this color range.
+		 */
+        type?: FoldingRangeType | string;
+
+		/**
+		 * Creates a new folding range.
+		 *
+		 * @param startLineNumber The first line of the fold
+		 * @param type The last line of the fold
+		 */
+        constructor(startLineNumber: number, endLineNumber: number, type?: FoldingRangeType | string);
+    }
+
+    export enum FoldingRangeType {
+		/**
+		 * Folding range for a comment
+		 */
+        Comment = 'comment',
+		/**
+		 * Folding range for a imports or includes
+		 */
+        Imports = 'imports',
+		/**
+		 * Folding range for a region (e.g. `#region`)
+		 */
+        Region = 'region'
+    }
+
+    export namespace languages {
+
+		/**
+		 * Register a folding provider.
+		 *
+		 * Multiple folding can be registered for a language. In that case providers are sorted
+		 * by their [score](#languages.match) and the best-matching provider is used. Failure
+		 * of the selected provider will cause a failure of the whole operation.
+		 *
+		 * @param selector A selector that defines the documents this provider is applicable to.
+		 * @param provider A folding provider.
+		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
+		 */
+        export function registerFoldingProvider(selector: DocumentSelector, provider: FoldingProvider): Disposable;
+    }
+
+    export interface FoldingContext {
+        maxRanges?: number;
+    }
+
+    export interface FoldingProvider {
+		/**
+		 * Returns a list of folding ranges or null if the provider does not want to participate or was cancelled.
+		 */
+        provideFoldingRanges(document: TextDocument, context: FoldingContext, token: CancellationToken): ProviderResult<FoldingRangeList>;
+    }
+
+    //#endregion
+
+    //#region Joh: file system provider
 
     // export enum FileErrorCodes {
     // 	/**
@@ -112,12 +203,30 @@ declare module 'vscode' {
         type: FileType;
     }
 
+    export interface TextSearchQuery {
+        pattern: string;
+        isRegex?: boolean;
+        isCaseSensitive?: boolean;
+        isWordMatch?: boolean;
+    }
+
+    export interface TextSearchOptions {
+        includes: GlobPattern[];
+        excludes: GlobPattern[];
+    }
+
+    export interface TextSearchResult {
+        uri: Uri;
+        range: Range;
+        preview: { leading: string, matching: string, trailing: string };
+    }
+
     // todo@joh discover files etc
+    // todo@joh CancellationToken everywhere
+    // todo@joh add open/close calls?
     export interface FileSystemProvider {
 
-        onDidChange?: Event<FileChange[]>;
-
-        root: Uri;
+        readonly onDidChange?: Event<FileChange[]>;
 
         // more...
         //
@@ -125,8 +234,9 @@ declare module 'vscode' {
 
         stat(resource: Uri): Thenable<FileStat>;
 
-        read(resource: Uri, offset: number | undefined, length: number | undefined, progress: Progress<Uint8Array>): Thenable<number>;
+        read(resource: Uri, offset: number, length: number, progress: Progress<Uint8Array>): Thenable<number>;
 
+        // todo@joh - have an option to create iff not exist
         // todo@remote
         // offset - byte offset to start
         // count - number of bytes to write
@@ -157,21 +267,22 @@ declare module 'vscode' {
         // create(resource: Uri): Thenable<FileStat>;
 
         // find files by names
+        // todo@joh, move into its own provider
         findFiles?(query: string, progress: Progress<Uri>, token: CancellationToken): Thenable<void>;
+        provideTextSearchResults?(query: TextSearchQuery, options: TextSearchOptions, progress: Progress<TextSearchResult>, token: CancellationToken): Thenable<void>;
     }
 
     export namespace workspace {
-        export function registerFileSystemProvider(authority: string, provider: FileSystemProvider): Disposable;
+        export function registerFileSystemProvider(scheme: string, provider: FileSystemProvider): Disposable;
     }
 
-    export namespace window {
+    //#endregion
 
-        export function sampleFunction(): Thenable<any>;
-    }
+    //#region Joao: diff command
 
-    /**
-     * The contiguous set of modified lines in a diff.
-     */
+	/**
+	 * The contiguous set of modified lines in a diff.
+	 */
     export interface LineChange {
         readonly originalStartLineNumber: number;
         readonly originalEndLineNumber: number;
@@ -181,124 +292,514 @@ declare module 'vscode' {
 
     export namespace commands {
 
-        /**
-         * Registers a diff information command that can be invoked via a keyboard shortcut,
-         * a menu item, an action, or directly.
-         *
-         * Diff information commands are different from ordinary [commands](#commands.registerCommand) as
-         * they only execute when there is an active diff editor when the command is called, and the diff
-         * information has been computed. Also, the command handler of an editor command has access to
-         * the diff information.
-         *
-         * @param command A unique identifier for the command.
-         * @param callback A command handler function with access to the [diff information](#LineChange).
-         * @param thisArg The `this` context used when invoking the handler function.
-         * @return Disposable which unregisters this command on disposal.
-         */
+		/**
+		 * Registers a diff information command that can be invoked via a keyboard shortcut,
+		 * a menu item, an action, or directly.
+		 *
+		 * Diff information commands are different from ordinary [commands](#commands.registerCommand) as
+		 * they only execute when there is an active diff editor when the command is called, and the diff
+		 * information has been computed. Also, the command handler of an editor command has access to
+		 * the diff information.
+		 *
+		 * @param command A unique identifier for the command.
+		 * @param callback A command handler function with access to the [diff information](#LineChange).
+		 * @param thisArg The `this` context used when invoking the handler function.
+		 * @return Disposable which unregisters this command on disposal.
+		 */
         export function registerDiffInformationCommand(command: string, callback: (diff: LineChange[], ...args: any[]) => any, thisArg?: any): Disposable;
     }
 
-    /**
-     * Represents a color in RGBA space.
-     */
-    export class Color {
+    //#endregion
 
-        /**
-         * The red component of this color in the range [0-1].
-         */
-        readonly red: number;
+    //#region Joh: decorations
 
-        /**
-         * The green component of this color in the range [0-1].
-         */
-        readonly green: number;
-
-        /**
-         * The blue component of this color in the range [0-1].
-         */
-        readonly blue: number;
-
-        /**
-         * The alpha component of this color in the range [0-1].
-         */
-        readonly alpha: number;
-
-        constructor(red: number, green: number, blue: number, alpha: number);
+    //todo@joh -> make class
+    export interface DecorationData {
+        priority?: number;
+        title?: string;
+        bubble?: boolean;
+        abbreviation?: string;
+        color?: ThemeColor;
+        source?: string;
     }
 
-    /**
-     * Represents a color range from a document.
-     */
-    export class ColorInformation {
-
-        /**
-         * The range in the document where this color appers.
-         */
-        range: Range;
-
-        /**
-         * The actual color value for this color range.
-         */
-        color: Color;
-
-        /**
-         * Creates a new color range.
-         *
-         * @param range The range the color appears in. Must not be empty.
-         * @param color The value of the color.
-         * @param format The format in which this color is currently formatted.
-         */
-        constructor(range: Range, color: Color);
+    export interface SourceControlResourceDecorations {
+        source?: string;
+        letter?: string;
+        color?: ThemeColor;
     }
 
-    export class ColorPresentation {
-        /**
-         * The label of this color presentation. It will be shown on the color
-         * picker header. By default this is also the text that is inserted when selecting
-         * this color presentation.
-         */
-        label: string;
-        /**
-         * An [edit](#TextEdit) which is applied to a document when selecting
-         * this presentation for the color.  When `falsy` the [label](#ColorPresentation.label)
-         * is used.
-         */
-        textEdit?: TextEdit;
-        /**
-         * An optional array of additional [text edits](#TextEdit) that are applied when
-         * selecting this color presentation. Edits must not overlap with the main [edit](#ColorPresentation.textEdit) nor with themselves.
-         */
-        additionalTextEdits?: TextEdit[];
-
-        /**
-         * Creates a new color presentation.
-         *
-         * @param label The label of this color presentation.
-         */
-        constructor(label: string);
+    export interface DecorationProvider {
+        onDidChangeDecorations: Event<undefined | Uri | Uri[]>;
+        provideDecoration(uri: Uri, token: CancellationToken): ProviderResult<DecorationData>;
     }
 
-    /**
-     * The document color provider defines the contract between extensions and feature of
-     * picking and modifying colors in the editor.
-     */
-    export interface DocumentColorProvider {
-        /**
-         * Provide colors for the given document.
-         *
-         * @param document The document in which the command was invoked.
-         * @param token A cancellation token.
-         * @return An array of [color informations](#ColorInformation) or a thenable that resolves to such. The lack of a result
-         * can be signaled by returning `undefined`, `null`, or an empty array.
-         */
-        provideDocumentColors(document: TextDocument, token: CancellationToken): ProviderResult<ColorInformation[]>;
-        /**
-         * Provide representations for a color.
-         */
-        provideColorPresentations(document: TextDocument, colorInfo: ColorInformation, token: CancellationToken): ProviderResult<ColorPresentation[]>;
+    export namespace window {
+        export function registerDecorationProvider(provider: DecorationProvider): Disposable;
     }
 
-    export namespace languages {
-        export function registerColorProvider(selector: DocumentSelector, provider: DocumentColorProvider): Disposable;
+    //#endregion
+
+    //#region André: debug
+
+	/**
+	 * Represents a debug adapter executable and optional arguments passed to it.
+	 */
+    export class DebugAdapterExecutable {
+		/**
+		 * The command path of the debug adapter executable.
+		 * A command must be either an absolute path or the name of an executable looked up via the PATH environment variable.
+		 * The special value 'node' will be mapped to VS Code's built-in node runtime.
+		 */
+        readonly command: string;
+
+		/**
+		 * Optional arguments passed to the debug adapter executable.
+		 */
+        readonly args: string[];
+
+		/**
+		 * Create a new debug adapter specification.
+		 */
+        constructor(command: string, args?: string[]);
     }
+
+    export interface DebugConfigurationProvider {
+		/**
+		 * This optional method is called just before a debug adapter is started to determine its excutable path and arguments.
+		 * Registering more than one debugAdapterExecutable for a type results in an error.
+		 * @param folder The workspace folder from which the configuration originates from or undefined for a folderless setup.
+		 * @param token A cancellation token.
+		 * @return a [debug adapter's executable and optional arguments](#DebugAdapterExecutable) or undefined.
+		 */
+        debugAdapterExecutable?(folder: WorkspaceFolder | undefined, token?: CancellationToken): ProviderResult<DebugAdapterExecutable>;
+    }
+
+    export interface Breakpoint {
+		/**
+		 * An optional message that gets logged when this breakpoint is hit.
+		 */
+        readonly logMessage?: string;
+    }
+
+    //#endregion
+
+    //#region Rob, Matt: logging
+
+	/**
+	 * The severity level of a log message
+	 */
+    export enum LogLevel {
+        Trace = 1,
+        Debug = 2,
+        Info = 3,
+        Warning = 4,
+        Error = 5,
+        Critical = 6,
+        Off = 7
+    }
+
+	/**
+	 * A logger for writing to an extension's log file, and accessing its dedicated log directory.
+	 */
+    export interface Logger {
+        trace(message: string, ...args: any[]): void;
+        debug(message: string, ...args: any[]): void;
+        info(message: string, ...args: any[]): void;
+        warn(message: string, ...args: any[]): void;
+        error(message: string | Error, ...args: any[]): void;
+        critical(message: string | Error, ...args: any[]): void;
+    }
+
+    export interface ExtensionContext {
+		/**
+		 * This extension's logger
+		 */
+        logger: Logger;
+
+		/**
+		 * Path where an extension can write log files.
+		 *
+		 * Extensions must create this directory before writing to it. The parent directory will always exist.
+		 */
+        readonly logDirectory: string;
+    }
+
+    export namespace env {
+		/**
+		 * Current logging level.
+		 *
+		 * @readonly
+		 */
+        export const logLevel: LogLevel;
+    }
+
+    //#endregion
+
+    //#region Joh: rename context
+
+    export interface RenameContext {
+        range?: Range;
+        newName?: string;
+        message?: string;
+    }
+
+    export interface RenameProvider2 extends RenameProvider {
+
+		/**
+		 * Optional function for resolving and validating a position at which rename is
+		 * being carried out.
+		 *
+		 * @param document The document in which rename will be invoked.
+		 * @param position The position at which rename will be invoked.
+		 * @param token A cancellation token.
+		 * @return A `RenameContext` with more information. The lack of a result can signaled by returning `undefined` or `null`.
+		 */
+        resolveRenameLocation?(document: TextDocument, position: Position, token: CancellationToken): ProviderResult<RenameContext>;
+
+    }
+
+    //#endregion
+
+    //#region Joao: SCM validation
+
+	/**
+	 * Represents the validation type of the Source Control input.
+	 */
+    export enum SourceControlInputBoxValidationType {
+
+		/**
+		 * Something not allowed by the rules of a language or other means.
+		 */
+        Error = 0,
+
+		/**
+		 * Something suspicious but allowed.
+		 */
+        Warning = 1,
+
+		/**
+		 * Something to inform about but not a problem.
+		 */
+        Information = 2
+    }
+
+    export interface SourceControlInputBoxValidation {
+
+		/**
+		 * The validation message to display.
+		 */
+        readonly message: string;
+
+		/**
+		 * The validation type.
+		 */
+        readonly type: SourceControlInputBoxValidationType;
+    }
+
+	/**
+	 * Represents the input box in the Source Control viewlet.
+	 */
+    export interface SourceControlInputBox {
+
+		/**
+		 * A validation function for the input box. It's possible to change
+		 * the validation provider simply by setting this property to a different function.
+		 */
+        validateInput?(value: string, cursorPosition: number): ProviderResult<SourceControlInputBoxValidation | undefined | null>;
+    }
+
+    //#endregion
+
+    //#region Matt: WebView
+
+	/**
+	 * Content settings for a webview.
+	 */
+    export interface WebviewOptions {
+		/**
+		 * Should scripts be enabled in the webview content?
+		 *
+		 * Defaults to false (scripts-disabled).
+		 */
+        readonly enableScripts?: boolean;
+
+		/**
+		 * Should command uris be enabled in webview content?
+		 *
+		 * Defaults to false.
+		 */
+        readonly enableCommandUris?: boolean;
+
+		/**
+		 * Should the find widget be enabled in the webview?
+		 *
+		 * Defaults to false.
+		 */
+        readonly enableFindWidget?: boolean;
+
+		/**
+		 * Should the webview's context be kept around even when the webview is no longer visible?
+		 *
+		 * Normally a webview's context is created when the webview becomes visible
+		 * and destroyed when the webview is hidden. Apps that have complex state
+		 * or UI can set the `retainContextWhenHidden` to make VS Code keep the webview
+		 * context around, even when the webview moves to a background tab. When
+		 * the webview becomes visible again, the context is automatically restored
+		 * in the exact same state it was in originally.
+		 *
+		 * `retainContextWhenHidden` has a high memory overhead and should only be used if
+		 * your webview's context cannot be quickly saved and restored.
+		 */
+        readonly retainContextWhenHidden?: boolean;
+
+		/**
+		 * Root paths from which the webview can load local (filesystem) resources using the `vscode-resource:` scheme.
+		 *
+		 * Default to the root folders of the current workspace plus the extension's install directory.
+		 *
+		 * Pass in an empty array to disallow access to any local resources.
+		 */
+        readonly localResourceRoots?: Uri[];
+    }
+
+	/**
+	 * A webview is an editor with html content, like an iframe.
+	 */
+    export interface Webview {
+		/**
+		 * Type identifying the editor as a webview editor.
+		 */
+        readonly editorType: 'webview';
+
+		/**
+		 * Unique identifer of the webview.
+		 */
+        readonly uri: Uri;
+
+		/**
+		 * Content settings for the webview.
+		 */
+        readonly options: WebviewOptions;
+
+		/**
+		 * Title of the webview shown in UI.
+		 */
+        title: string;
+
+		/**
+		 * Contents of the webview.
+		 *
+		 * Should be a complete html document.
+		 */
+        html: string;
+
+		/**
+		 * The column in which the webview is showing.
+		 */
+        readonly viewColumn?: ViewColumn;
+
+		/**
+		 * Fired when the webview content posts a message.
+		 */
+        readonly onDidReceiveMessage: Event<any>;
+
+		/**
+		 * Fired when the webview is disposed.
+		 */
+        readonly onDidDispose: Event<void>;
+
+		/**
+		 * Fired when the webview's view column changes.
+		 */
+        readonly onDidChangeViewColumn: Event<ViewColumn>;
+
+		/**
+		 * Post a message to the webview content.
+		 *
+		 * Messages are only develivered if the webview is visible.
+		 *
+		 * @param message Body of the message.
+		 */
+        postMessage(message: any): Thenable<boolean>;
+
+		/**
+		 * Shows the webview in a given column.
+		 *
+		 * A webview may only show in a single column at a time. If it is already showing, this
+		 * command moves it to a new column.
+		 */
+        show(viewColumn: ViewColumn): void;
+
+		/**
+		 * Dispose of the the webview.
+		 *
+		 * This closes the webview if it showing and disposes of the resources owned by the webview.
+		 * Webview are also disposed when the user closes the webview editor. Both cases fire `onDispose`
+		 * event. Trying to use the webview after it has been disposed throws an exception.
+		 */
+        dispose(): any;
+    }
+
+    export interface TextEditor {
+		/**
+		 * Type identifying the editor as a text editor.
+		 */
+        readonly editorType: 'texteditor';
+    }
+
+    namespace window {
+		/**
+		 * Create and show a new webview.
+		 *
+		 * @param uri Unique identifier for the webview.
+		 * @param title Title of the webview.
+		 * @param column Editor column to show the new webview in.
+		 * @param options Content settings for the webview.
+		 */
+        export function createWebview(uri: Uri, title: string, column: ViewColumn, options: WebviewOptions): Webview;
+
+		/**
+		 * Event fired when the active editor changes.
+		 */
+        export const onDidChangeActiveEditor: Event<TextEditor | Webview | undefined>;
+    }
+
+    //#endregion
+
+    //#region Sandeep: TreeView
+
+    export namespace window {
+
+		/**
+		 * Register a [TreeDataProvider](#TreeDataProvider) for the view contributed using the extension point `views`.
+		 * @param viewId Id of the view contributed using the extension point `views`.
+		 * @param treeDataProvider A [TreeDataProvider](#TreeDataProvider) that provides tree data for the view
+		 * @return handle to the [treeview](#TreeView) that can be disposable.
+		 */
+        export function registerTreeDataProvider<T>(viewId: string, treeDataProvider: TreeDataProvider<T>): TreeView<T>;
+
+    }
+
+	/**
+	 * Represents a Tree view
+	 */
+    export interface TreeView<T> extends Disposable {
+
+		/**
+		 * Reveal an element. By default revealed element is selected.
+		 *
+		 * In order to not to select, set the option `select` to `false`.
+		 *
+		 * **NOTE:** [TreeDataProvider](#TreeDataProvider) is required to implement [getParent](#TreeDataProvider.getParent) method to access this API.
+		 */
+        reveal(element: T, options?: { select?: boolean }): Thenable<void>;
+    }
+
+	/**
+	 * A data provider that provides tree data
+	 */
+    export interface TreeDataProvider<T> {
+		/**
+		 * An optional event to signal that an element or root has changed.
+		 * This will trigger the view to update the changed element/root and its children recursively (if shown).
+		 * To signal that root has changed, do not pass any argument or pass `undefined` or `null`.
+		 */
+        onDidChangeTreeData?: Event<T | undefined | null>;
+
+		/**
+		 * Get [TreeItem](#TreeItem) representation of the `element`
+		 *
+		 * @param element The element for which [TreeItem](#TreeItem) representation is asked for.
+		 * @return [TreeItem](#TreeItem) representation of the element
+		 */
+        getTreeItem(element: T): TreeItem | Thenable<TreeItem>;
+
+		/**
+		 * Get the children of `element` or root if no element is passed.
+		 *
+		 * @param element The element from which the provider gets children. Can be `undefined`.
+		 * @return Children of `element` or root if no element is passed.
+		 */
+        getChildren(element?: T): ProviderResult<T[]>;
+
+		/**
+		 * Optional method to return the parent of `element`.
+		 * Return `null` or `undefined` if `element` is a child of root.
+		 *
+		 * **NOTE:** This method should be implemented in order to access [reveal](#TreeView.reveal) API.
+		 *
+		 * @param element The element for which the parent has to be returned.
+		 * @return Parent of `element`.
+		 */
+        getParent?(element: T): ProviderResult<T>;
+    }
+
+    //#endregion
+
+    //#region Alex: TextEditor.visibleRange and related event
+
+    export interface TextEditor {
+		/**
+		 * The current visible ranges in the editor (vertically).
+		 * This accounts only for vertical scrolling, and not for horizontal scrolling.
+		 */
+        readonly visibleRanges: Range[];
+    }
+
+	/**
+	 * Represents an event describing the change in a [text editor's visible ranges](#TextEditor.visibleRanges).
+	 */
+    export interface TextEditorVisibleRangesChangeEvent {
+		/**
+		 * The [text editor](#TextEditor) for which the visible ranges have changed.
+		 */
+        textEditor: TextEditor;
+		/**
+		 * The new value for the [text editor's visible ranges](#TextEditor.visibleRanges).
+		 */
+        visibleRanges: Range[];
+    }
+
+    export namespace window {
+		/**
+		 * An [event](#Event) which fires when the selection in an editor has changed.
+		 */
+        export const onDidChangeTextEditorVisibleRanges: Event<TextEditorVisibleRangesChangeEvent>;
+    }
+
+    //#endregion
+
+    //#region Tasks
+
+	/**
+	 * A task item represents a task in the system. It can be used to
+	 * present task information in the user interface or to execute the
+	 * underlying task.
+	 */
+    export interface TaskItem {
+
+		/**
+		 * A unique ID representing the underlying task.
+		 */
+        readonly id: string;
+
+		/**
+		 * A human readable label of the task.
+		 */
+        readonly label: string;
+
+		/**
+		 * The task definition.
+		 */
+        readonly definition: TaskDefinition;
+
+		/**
+		 * The workspace folder the task belongs to. Is undefined
+		 * to tasks that aren't scoped to a workspace folder.
+		 */
+        readonly workspaceFolder: WorkspaceFolder | undefined;
+    }
+
+    //#endregion
 }

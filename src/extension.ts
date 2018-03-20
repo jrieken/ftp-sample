@@ -12,32 +12,30 @@ export function activate(context: vscode.ExtensionContext) {
     let disposable = vscode.workspace.registerFileSystemProvider(
         'ftp',
         new FtpFileSystemProvider(
-            vscode.Uri.parse('YOUR_SERVER'),
+            '<HOST>',
             '<USER>',
             '<PASS>'
         )
     );
+
+    vscode.workspace.updateWorkspaceFolders(0, 0, {
+        name: 'FTP-Sample',
+        uri: vscode.Uri.parse('ftp://<HOST>/<PATH>'),
+    })
 
     context.subscriptions.push(disposable);
 }
 
 class FtpFileSystemProvider implements vscode.FileSystemProvider {
 
-    readonly root: vscode.Uri;
-
-    private readonly _user: string;
-    private readonly _pass: string;
     private _connection: JSFtp;
     private _pending: { resolve: Function, reject: Function, func: keyof JSFtp, args: any[] }[] = [];
 
     constructor(
-        root: vscode.Uri,
-        user: string,
-        pass: string
+        private readonly _host: string,
+        private readonly _user: string,
+        private readonly _pass: string
     ) {
-        this.root = root;
-        this._user = user;
-        this._pass = pass;
     }
 
     private _withConnection<T>(func: keyof JSFtp, ...args: any[]): Promise<T> {
@@ -55,7 +53,7 @@ class FtpFileSystemProvider implements vscode.FileSystemProvider {
         if (this._connection === void 0) {
             // ensure connection first
             const candidate = new JSFtp({
-                host: this.root.authority
+                host: this._host
             });
             candidate.keepAlive(1000 * 5);
             candidate.auth(this._user, this._pass, (err) => {
